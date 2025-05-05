@@ -23,7 +23,10 @@
           </tr>
           <tr v-else v-for="item in items" :key="item.path" @dblclick="openItem(item)">
             <td><input type="checkbox" v-model="item.selected" @click.stop /></td> <!-- Prevent dblclick propagation -->
-            <td>{{ item.name }}</td>
+            <td>
+              <span v-html="getFileIcon(item)"></span> <!-- Icon -->
+              {{ item.name }}
+            </td>
             <td>{{ getFileTypeDescription(item) }}</td> <!-- Call new method -->
             <td>{{ formatSize(item.size) }}</td>
             <td>{{ item.readonly ? 'R' : '' }}</td> <!-- Display R if readonly -->
@@ -46,9 +49,128 @@ const error = ref(null);
 
 // --- 计算属性 ---
 const canGoUp = computed(() => {
-    // Basic check, needs improvement for root paths (C:\, /)
-    return currentPath.value && currentPath.value !== '/' && !/^[a-zA-Z]:\\?$/.test(currentPath.value);
+    // Basic check, needs improvement for root paths (C:\\, /)
+    return currentPath.value && currentPath.value !== '/' && !/^[a-zA-Z]:\\\\?$/.test(currentPath.value);
 });
+
+// --- SVG 图标定义 ---
+// (使用内联SVG简化处理，颜色和样式可以稍后调整)
+
+// 基础样式，可用于所有图标
+const svgStyle = 'display: inline-block; vertical-align: middle; margin-right: 5px; width: 16px; height: 16px;';
+
+// 文件夹图标 (普通)
+const folderIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" style="${svgStyle} color: #FFC107;">
+  <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
+</svg>`;
+
+// 文件夹图标 (隐藏 - 半透明)
+const hiddenFolderIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" style="${svgStyle} color: #FFC107; opacity: 0.6;">
+  <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
+</svg>`;
+
+// 通用文件图标
+const fileIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" style="${svgStyle} color: #90A4AE;">
+  <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 14h-8v-2h8v2zm0-4h-8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+</svg>`;
+
+// 图片文件图标
+const imageIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" style="${svgStyle} color: #4CAF50;">
+ <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
+</svg>`;
+
+// 音频文件图标
+const audioIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" style="${svgStyle} color: #2196F3;">
+  <path d="M12 3v9.28c-.47-.17-.97-.28-1.5-.28C8.01 12 6 14.01 6 16.5S8.01 21 10.5 21c2.31 0 4.2-1.75 4.45-4H15V6h4V3h-7z"/>
+</svg>`;
+
+// 视频文件图标
+const videoIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" style="${svgStyle} color: #F44336;">
+ <path d="M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4h-4z"/>
+</svg>`;
+
+// PDF 文件图标
+const pdfIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" style="${svgStyle} color: #E91E63;">
+ <path d="M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8.5 7.5c0 .83-.67 1.5-1.5 1.5H9v2H7.5V7H10c.83 0 1.5.67 1.5 1.5v1zm5 2c0 .83-.67 1.5-1.5 1.5h-2.5V7H15c.83 0 1.5.67 1.5 1.5v3zm4-3H19v1h1.5V11H19v2h-1.5V7h3v1.5zM9 9.5h1v-1H9v1z"/>
+</svg>`;
+
+// 代码文件图标
+const codeIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" style="${svgStyle} color: #00BCD4;">
+ <path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/>
+</svg>`;
+
+// 压缩文件图标
+const archiveIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" style="${svgStyle} color: #FF9800;">
+  <path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-1 8h-3v3h-2v-3h-3v-2h3V9h2v3h3v2z"/>
+</svg>`;
+
+// 可执行文件图标
+const executableIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" style="${svgStyle} color: #795548;">
+  <path d="M13.89 8.7L12 10.59 10.11 8.7a.996.996 0 10-1.41 1.41L10.59 12 8.7 13.89a.996.996 0 101.41 1.41L12 12.41l1.89 1.89a.996.996 0 101.41-1.41L13.41 12l1.89-1.89a.996.996 0 000-1.41c-.39-.38-1.03-.38-1.41 0zM19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z"/>
+</svg>`;
+
+// --- 新增方法: 获取文件/文件夹图标 ---
+function getFileIcon(item) {
+  // 1. 检查是否是文件夹
+  if (item.is_dir) {
+    // 检查是否是隐藏文件夹 (以 '.' 开头)
+    // TODO: 未来可以依赖后端传来的 is_hidden 属性
+    if (item.name.startsWith('.')) {
+      return hiddenFolderIcon;
+    } else {
+      return folderIcon;
+    }
+  }
+
+  // 2. 处理文件
+  const name = item.name || '';
+  const lastDotIndex = name.lastIndexOf('.');
+  if (lastDotIndex === -1 || lastDotIndex === 0 || lastDotIndex === name.length - 1) {
+    return fileIcon; // 没有有效扩展名，返回通用文件图标
+  }
+
+  const extension = name.substring(lastDotIndex + 1).toLowerCase();
+
+  // 3. 根据扩展名返回特定图标
+  switch (extension) {
+    // 图片
+    case 'jpg': case 'jpeg': case 'png': case 'gif': case 'bmp': case 'tiff': case 'tif': case 'svg': case 'ico': case 'webp': case 'psd': case 'ai': case 'raw': case 'cr2': case 'nef': case 'orf': case 'arw':
+      return imageIcon;
+    // 音频
+    case 'mp3': case 'wav': case 'ogg': case 'flac': case 'aac': case 'wma': case 'm4a': case 'ape': case 'mid': case 'midi':
+      return audioIcon;
+    // 视频
+    case 'mp4': case 'avi': case 'mkv': case 'mov': case 'wmv': case 'flv': case 'webm': case 'mpg': case 'mpeg': case 'm4v': case '3gp':
+      return videoIcon;
+    // PDF
+    case 'pdf':
+      return pdfIcon;
+    // 代码
+    case 'js': case 'ts': case 'jsx': case 'tsx': case 'css': case 'scss': case 'less': case 'py': case 'java': case 'c': case 'cpp': case 'h': case 'hpp': case 'cs': case 'go': case 'php': case 'rb': case 'swift': case 'kt': case 'rs': case 'vue': case 'sql': case 'html': case 'htm': case 'xml': case 'json': case 'md': case 'sh': case 'bat':
+      return codeIcon;
+    // 压缩文件
+    case 'zip': case 'rar': case '7z': case 'gz': case 'tar': case 'bz2': case 'xz': case 'iso': case 'img':
+      return archiveIcon;
+    // 可执行文件
+    case 'exe': case 'dll': case 'msi': case 'jar': case 'apk': case 'app': // .app is tricky
+      return executableIcon;
+    // 文本 (如果不是其他特定类型)
+    case 'txt': case 'log': case 'ini': case 'csv':
+       return fileIcon; // 可以用通用文件图标，或专门的文本图标
+    // 字体
+    case 'ttf': case 'otf': case 'woff': case 'woff2': case 'eot':
+       // 暂时用通用图标
+       return fileIcon;
+    // 其他已知类型但无特定图标 (如Office文档)
+    case 'doc': case 'docx': case 'xls': case 'xlsx': case 'ppt': case 'pptx': case 'odt': case 'ods': case 'odp': case 'rtf':
+       // 可以用通用图标，或文档图标
+       return fileIcon;
+
+    // 默认通用文件图标
+    default:
+      return fileIcon;
+  }
+}
 
 // --- 方法 ---
 async function listDirectory(path) {
@@ -86,23 +208,32 @@ async function initializePath() {
 function goUp() {
   if (!canGoUp.value || !currentPath.value) return;
 
-    const parts = currentPath.value.replace(/\\$/, '').split(/[\/]/);
+    const parts = currentPath.value.replace(/\\\\$/, '').split(/[\\/]/);
     if (parts.length <= 1 && !/^[a-zA-Z]:$/.test(parts[0])) {
+        // Already at root (e.g., '/') or invalid path
         return;
     }
-    if (parts.length === 1 && /^[a-zA-Z]:$/.test(parts[0])) {
-        return;
-    }
+     if (parts.length === 1 && /^[a-zA-Z]:$/.test(parts[0])) {
+         // Already at drive root (e.g., C:)
+         return;
+     }
+
 
     parts.pop();
-    let parentPath = parts.join(currentPath.value.includes('\\') ? '\\' : '/');
+    let parentPath = parts.join(currentPath.value.includes('\\\\') ? '\\\\' : '/');
 
-    if (parentPath === '') {
-        parentPath = '/';
+    // Handle going up from root directory (e.g., C:\Users -> C:\)
+    // Or handle root like /home -> /
+    if (/^[a-zA-Z]:$/.test(parts[0]) && parts.length === 1) {
+        parentPath += '\\\\'; // Append backslash for drive root C:\
+    } else if (parentPath === '' && currentPath.value.startsWith('/')) {
+        parentPath = '/'; // Set to root for Unix-like paths
+    } else if (parentPath === '' && /^[a-zA-Z]:/.test(currentPath.value)) {
+        // This case might occur if path was "C:", should already be handled above
+         console.warn("Unexpected empty parent path for drive:", currentPath.value);
+         return; // Avoid navigating to empty string
     }
-    else if (/^[a-zA-Z]:$/.test(parentPath)) {
-        parentPath += '\\';
-    }
+
 
     listDirectory(parentPath);
 }
@@ -287,6 +418,7 @@ onMounted(() => {
 </script>
 
 <style scoped>
+/* 微调样式以适应图标 */
 .file-manager {
   padding: 1rem;
 }
@@ -299,6 +431,7 @@ onMounted(() => {
 .current-path {
   font-style: italic;
   color: #555;
+  margin-left: auto; /* Push path to the right */
 }
 .loading-indicator, .error-message {
     margin-top: 1rem;
@@ -319,6 +452,7 @@ onMounted(() => {
   padding: 8px;
   text-align: left;
   white-space: nowrap;
+  vertical-align: middle; /* 确保图标和文字垂直居中 */
 }
 .file-list th {
   background-color: #f2f2f2;
@@ -327,4 +461,12 @@ onMounted(() => {
   background-color: #f5f5f5;
   cursor: pointer;
 }
+
+/* 调整列宽 */
+.file-list th:first-child, .file-list td:first-child { width: 30px; text-align: center;} /* Checkbox 列 */
+.file-list th:nth-child(2), .file-list td:nth-child(2) { width: auto; white-space: normal; } /* 名称列，允许换行 */
+.file-list th:nth-child(3), .file-list td:nth-child(3) { width: 120px; } /* 类型列 */
+.file-list th:nth-child(4), .file-list td:nth-child(4) { width: 100px; } /* 大小列 */
+.file-list th:nth-child(5), .file-list td:nth-child(5) { width: 50px; text-align: center; } /* 属性列 */
+
 </style> 
