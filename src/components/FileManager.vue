@@ -180,7 +180,26 @@ async function listDirectory(path) {
 
   try {
     const result = await invoke('list_directory', { path: path });
-    items.value = result.map(item => ({ ...item, selected: false }));
+
+    // --- 开始排序 ---
+    const sortedResult = result.sort((a, b) => {
+      // 1. 类型比较 (文件夹优先)
+      if (a.is_dir && !b.is_dir) {
+        return -1; // a (文件夹) 在前
+      }
+      if (!a.is_dir && b.is_dir) {
+        return 1; // b (文件夹) 在前
+      }
+
+      // 2. 同类型按名称排序 (使用 localeCompare 支持中文)
+      // 'zh-CN' 确保中文按拼音排序
+      // sensitivity: 'base' 可以忽略大小写差异，如果需要区分大小写可以去掉或改为 'variant'
+      // numeric: true 让名称中的数字按数值排序 (如 'folder10' 在 'folder2' 之后)
+      return a.name.localeCompare(b.name, 'zh-CN', { sensitivity: 'base', numeric: true });
+    });
+    // --- 结束排序 ---
+
+    items.value = sortedResult.map(item => ({ ...item, selected: false }));
     currentPath.value = path; // Update path on success
   } catch (e) {
     error.value = `无法加载目录: ${e}`;
