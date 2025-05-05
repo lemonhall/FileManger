@@ -12,6 +12,7 @@ struct FileInfo {
     path: String,
     is_dir: bool,
     size: Option<u64>,
+    readonly: bool,
 }
 
 // 定义 Tauri 命令
@@ -43,11 +44,14 @@ fn list_directory(path: String) -> Result<Vec<FileInfo>, String> {
                 let path_str = path_buf.to_string_lossy().into_owned();
                 let is_dir = metadata.is_dir();
                 let size = if is_dir { None } else { Some(metadata.len()) };
+                let readonly = metadata.permissions().readonly();
+
                 entries.push(FileInfo {
                     name,
                     path: path_str,
                     is_dir,
                     size,
+                    readonly,
                 });
             }
             Err(e) => {
