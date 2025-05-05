@@ -1,9 +1,9 @@
 import { defineConfig } from 'vite'
-// import vue from '@vitejs/plugin-vue' // Removed Vue plugin import
+import vue from '@vitejs/plugin-vue' // Add back Vue plugin import
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  // plugins: [vue()], // Removed Vue plugin usage
+  plugins: [vue()], // Add back Vue plugin usage
 
   // 防止 Vite 清空 dist 目录，因为 Tauri 可能在那里放置其他内容
   clearScreen: false,
