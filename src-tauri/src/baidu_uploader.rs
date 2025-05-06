@@ -218,7 +218,6 @@ impl BaiduUploader {
 
         let mut md5_list: Vec<String> = Vec::new();
         let mut file = File::open(local_file_path)?;
-        let mut buffer = vec![0; CHUNK_SIZE as usize]; // Read in chunks
 
         // Calculate MD5 for all chunks first
         let num_chunks = (file_size + CHUNK_SIZE - 1) / CHUNK_SIZE;

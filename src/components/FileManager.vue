@@ -49,7 +49,23 @@
           <label for="baidu-token">Access Token:</label>
           <input type="password" id="baidu-token" v-model="baiduAccessTokenInput" placeholder="请输入百度网盘Access Token">
         </div>
+
+        <!-- User Info Display Area -->
+        <div v-if="userInfoLoading" class="info-loading">正在获取信息...</div>
+        <div v-if="userInfoError" class="info-error">错误: {{ userInfoError }}</div>
+        <div v-if="userInfo || quotaInfo" class="user-info-display">
+          <h4 v-if="userInfo">用户信息</h4>
+          <p v-if="userInfo">用户名: {{ userInfo.baidu_name }} ({{ userInfo.netdisk_name }})</p>
+          <p v-if="userInfo">VIP类型: {{ vipTypeToString(userInfo.vip_type) }}</p>
+          <p v-if="userInfo"><img :src="userInfo.avatar_url" alt="avatar" width="30" height="30" style="vertical-align: middle; border-radius: 50%;"></p>
+          <h4 v-if="quotaInfo">存储配额</h4>
+          <p v-if="quotaInfo">{{ formatSize(quotaInfo.used) }} / {{ formatSize(quotaInfo.total) }}</p>
+          <progress v-if="quotaInfo" :value="quotaInfo.used" :max="quotaInfo.total" style="width: 100%;"></progress>
+        </div>
+        <!-- End User Info Display Area -->
+
         <div class="modal-actions">
+          <button @click="fetchAndDisplayUserInfo" :disabled="!baiduAccessTokenInput.trim() || userInfoLoading">检查Token并获取信息</button> <!-- New Button -->
           <button @click="saveSettings">保存</button>
           <button @click="closeSettingsModal">取消</button>
         </div>
@@ -70,6 +86,10 @@ const error = ref(null);
 const showSettingsModal = ref(false);
 const baiduAccessTokenInput = ref('');
 const storedAccessToken = ref(''); // To store the token loaded from localStorage
+const userInfo = ref(null);
+const quotaInfo = ref(null);
+const userInfoLoading = ref(false);
+const userInfoError = ref(null);
 
 // --- 计算属性 ---
 const canGoUp = computed(() => {
@@ -206,22 +226,20 @@ function getFileIcon(item) {
 
 // --- 新增方法: 同步选中文件到网盘 ---
 async function syncSelectedToNetdisk() {
+  const token = storedAccessToken.value;
+  if (!token) {
+      alert("请先在设置中配置百度网盘Access Token!");
+      openSettingsModal();
+      return;
+  }
   if (!canSyncToNetdisk.value) {
     alert("请至少选择一个文件进行同步。");
     return;
   }
 
-  const token = storedAccessToken.value; // Use the reactive ref
-  if (!token) {
-    alert("请先在设置中配置百度网盘Access Token!");
-    openSettingsModal(); // Optionally open settings modal
-    return;
-  }
-
   const filesToSync = selectedFiles.value;
-  const remoteBaseDir = "/来自FileManger同步"; // 可以根据需要修改或让用户配置
+  const remoteBaseDir = "/来自FileManger同步";
 
-  // 简单的loading提示，后续可优化
   const syncButton = document.querySelector('.toolbar button:nth-child(2)');
   let originalButtonText = '';
   if (syncButton) {
@@ -239,7 +257,7 @@ async function syncSelectedToNetdisk() {
       const result = await invoke('upload_file_to_baidupan', {
         localPath: file.path,
         remoteDir: remoteBaseDir,
-        accessToken: token // <--- 确保这里传递了 token
+        accessToken: token // Pass the correct token
       });
       console.log(`上传成功: ${file.name}`, result);
       alert(`文件 '${file.name}' 上传成功!\n响应: ${result}`);
@@ -250,15 +268,14 @@ async function syncSelectedToNetdisk() {
       errorCount++;
     }
   }
-  // 恢复按钮状态
+
   if (syncButton) {
       syncButton.textContent = originalButtonText;
-      syncButton.disabled = !canSyncToNetdisk.value; // Re-evaluate based on selection
+      syncButton.disabled = !canSyncToNetdisk.value;
   }
 
   alert(`同步完成! 成功: ${successCount}，失败: ${errorCount}。详情请查看控制台。`);
 
-  // 可选: 上传后取消选择
   items.value.forEach(item => item.selected = false);
 }
 
@@ -359,10 +376,12 @@ function openItem(item) {
 
 function formatSize(size) {
     if (size === null || size === undefined) return '-';
-    if (size < 1024) return `${size} B`;
-    if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-    if (size < 1024 * 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} MB`;
-    return `${(size / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+    const numSize = Number(size); // Ensure it's a number
+    if (isNaN(numSize)) return '-';
+    if (numSize < 1024) return `${numSize} B`;
+    if (numSize < 1024 * 1024) return `${(numSize / 1024).toFixed(1)} KB`;
+    if (numSize < 1024 * 1024 * 1024) return `${(numSize / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(numSize / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
 // --- 新增方法: 获取文件类型描述 ---
@@ -521,31 +540,99 @@ function getFileTypeDescription(item, useShortDescription = true) { // 添加 us
 
 // --- Settings Modal Methods ---
 function openSettingsModal() {
-  baiduAccessTokenInput.value = localStorage.getItem('BAIDU_NETDISK_ACCESS_TOKEN_VUE') || '';
+  baiduAccessTokenInput.value = storedAccessToken.value; // Use stored token when opening
+  // Reset info display when opening
+  userInfo.value = null;
+  quotaInfo.value = null;
+  userInfoError.value = null;
+  userInfoLoading.value = false;
   showSettingsModal.value = true;
 }
 
+async function fetchAndDisplayUserInfo() {
+  const token = baiduAccessTokenInput.value.trim();
+  if (!token) {
+    alert("请输入有效的 Access Token!");
+    return;
+  }
+
+  userInfoLoading.value = true;
+  userInfoError.value = null;
+  userInfo.value = null; // Clear previous results
+  quotaInfo.value = null; // Clear previous results
+
+  try {
+    // Fetch both concurrently
+    const [infoResult, quotaResult] = await Promise.allSettled([
+      invoke('get_baidu_user_info', { accessToken: token }),
+      invoke('get_baidu_quota', { accessToken: token })
+    ]);
+
+    let errors = [];
+    if (infoResult.status === 'fulfilled') {
+      userInfo.value = infoResult.value;
+      console.log("User Info Fetched:", infoResult.value);
+    } else {
+      errors.push(`获取用户信息失败: ${infoResult.reason}`);
+      console.error("User Info Fetch Error:", infoResult.reason);
+    }
+
+    if (quotaResult.status === 'fulfilled') {
+      quotaInfo.value = quotaResult.value;
+      console.log("Quota Info Fetched:", quotaResult.value);
+    } else {
+      errors.push(`获取配额信息失败: ${quotaResult.reason}`);
+      console.error("Quota Info Fetch Error:", quotaResult.reason);
+    }
+
+    if (errors.length > 0) {
+        userInfoError.value = errors.join('; \n');
+    }
+
+  } catch (e) {
+    userInfoError.value = `获取信息时发生意外错误: ${e}`;
+    console.error("Unexpected error during fetch:", e);
+  } finally {
+    userInfoLoading.value = false;
+  }
+}
+
 function saveSettings() {
-  if (baiduAccessTokenInput.value.trim()) {
-    localStorage.setItem('BAIDU_NETDISK_ACCESS_TOKEN_VUE', baiduAccessTokenInput.value.trim());
-    storedAccessToken.value = baiduAccessTokenInput.value.trim(); // Update reactive ref
+  const currentToken = baiduAccessTokenInput.value.trim();
+  if (currentToken) {
+    localStorage.setItem('BAIDU_NETDISK_ACCESS_TOKEN_VUE', currentToken);
+    storedAccessToken.value = currentToken;
     alert('Access Token 已保存!');
+    // Fetch info immediately after saving a non-empty token
+    fetchAndDisplayUserInfo(); 
   } else {
     localStorage.removeItem('BAIDU_NETDISK_ACCESS_TOKEN_VUE');
-    storedAccessToken.value = ''; // Update reactive ref
+    storedAccessToken.value = '';
+    userInfo.value = null; // Clear info if token is removed
+    quotaInfo.value = null;
     alert('Access Token 已清除!');
   }
-  closeSettingsModal();
+  // Keep modal open after save to see the result, user can close manually
+  // closeSettingsModal(); 
 }
 
 function closeSettingsModal() {
   showSettingsModal.value = false;
 }
 
+// --- Helper Functions ---
+function vipTypeToString(vipType) {
+  switch (vipType) {
+    case 0: return '普通用户';
+    case 1: return '普通会员';
+    case 2: return '超级会员';
+    default: return `未知 (${vipType})`;
+  }
+}
+
 // --- 生命周期钩子 ---
 onMounted(() => {
   initializePath();
-  // Load stored token on mount
   storedAccessToken.value = localStorage.getItem('BAIDU_NETDISK_ACCESS_TOKEN_VUE') || '';
 });
 
@@ -669,6 +756,7 @@ onMounted(() => {
 .modal-actions {
   display: flex;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 10px;
   margin-top: 20px;
 }
@@ -680,13 +768,51 @@ onMounted(() => {
   cursor: pointer;
 }
 
-.modal-actions button:first-of-type { /* Save button */
+.modal-actions button:nth-child(1) { /* Check Token button */
+  background-color: #2196F3; /* Blue */
+  color: white;
+  margin-right: auto; /* Pushes this button to the left */
+}
+.modal-actions button:nth-child(2) { /* Save button */
   background-color: #4CAF50;
   color: white;
 }
 
-.modal-actions button:last-of-type { /* Cancel button */
+.modal-actions button:nth-child(3) { /* Cancel button */
   background-color: #f44336;
   color: white;
+}
+
+/* Add styles for user info display */
+.user-info-display {
+  margin-top: 15px;
+  padding-top: 10px;
+  border-top: 1px solid #eee;
+}
+.user-info-display h4 {
+  margin-top: 0;
+  margin-bottom: 8px;
+  font-size: 0.9em;
+  color: #333;
+}
+.user-info-display p {
+  margin: 4px 0;
+  font-size: 0.85em;
+  color: #555;
+}
+
+.info-loading, .info-error {
+    margin-top: 10px;
+    padding: 8px;
+    border-radius: 4px;
+    font-size: 0.9em;
+}
+.info-loading {
+    background-color: #e3f2fd;
+    color: #1e88e5;
+}
+.info-error {
+    background-color: #ffcdd2;
+    color: #c62828;
 }
 </style> 

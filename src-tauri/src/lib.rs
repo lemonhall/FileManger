@@ -1,13 +1,14 @@
 use serde::Serialize;
 use std::fs;
 use std::env;
-use std::path::Path;
-// use std::path::PathBuf; // 移除未使用的导入
+// use std::path::Path; // <--- 移除未使用的导入
 use tauri::Manager;
 use log::{info, error}; // 添加 log 导入
 
 mod baidu_uploader; // <--- 添加模块声明
+mod baidu_userinfo; // <--- 添加模块声明
 use baidu_uploader::BaiduUploader; // <--- 使用模块
+use baidu_userinfo::{BaiduUserInfo, UserInfoResponse, QuotaResponse}; // <--- Import structs
 
 // 定义返回给前端的数据结构
 #[derive(Serialize, Debug)]
@@ -98,7 +99,7 @@ fn get_initial_path(app: tauri::AppHandle) -> Result<String, String> {
 }
 
 #[tauri::command]
-async fn upload_file_to_baidupan(local_path: String, remote_dir: String, access_token: String, app_handle: tauri::AppHandle) -> Result<String, String> {
+async fn upload_file_to_baidupan(local_path: String, remote_dir: String, access_token: String, _app_handle: tauri::AppHandle) -> Result<String, String> {
     info!("Attempting to upload: {} to remote dir: {} using provided token", local_path, remote_dir);
 
     // 直接使用从前端传递过来的 access_token
@@ -128,6 +129,40 @@ async fn upload_file_to_baidupan(local_path: String, remote_dir: String, access_
     }
 }
 
+// --- 新增命令：获取百度用户信息和配额 ---
+#[tauri::command]
+async fn get_baidu_user_info(access_token: String) -> Result<UserInfoResponse, String> {
+    if access_token.is_empty() {
+        error!("Access Token is empty when trying to get user info");
+        return Err("Access Token is empty. Please configure it in settings.".to_string());
+    }
+    info!("Fetching Baidu user info...");
+    let user_info_fetcher = BaiduUserInfo::new(access_token);
+    user_info_fetcher.get_user_info().await
+        .map_err(|e| {
+            let err_msg = format!("Failed to get user info: {}", e);
+            error!("{}", err_msg);
+            err_msg
+        })
+}
+
+#[tauri::command]
+async fn get_baidu_quota(access_token: String) -> Result<QuotaResponse, String> {
+     if access_token.is_empty() {
+        error!("Access Token is empty when trying to get quota");
+        return Err("Access Token is empty. Please configure it in settings.".to_string());
+    }
+    info!("Fetching Baidu quota info...");
+    let user_info_fetcher = BaiduUserInfo::new(access_token);
+    // Pass None for optional checkexpire/checkfree for now
+    user_info_fetcher.get_quota(None, None).await
+         .map_err(|e| {
+             let err_msg = format!("Failed to get quota info: {}", e);
+             error!("{}", err_msg);
+             err_msg
+         })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
@@ -146,7 +181,9 @@ pub fn run() {
     .invoke_handler(tauri::generate_handler![
         list_directory,
         get_initial_path,
-        upload_file_to_baidupan // <--- 添加新的 command
+        upload_file_to_baidupan,
+        get_baidu_user_info,
+        get_baidu_quota
     ])
     .run(tauri::generate_context!("tauri.conf.json"))
     .expect("error while running tauri application");
