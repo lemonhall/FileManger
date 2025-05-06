@@ -211,13 +211,24 @@ async function syncSelectedToNetdisk() {
     return;
   }
 
+  const token = storedAccessToken.value; // Use the reactive ref
+  if (!token) {
+    alert("请先在设置中配置百度网盘Access Token!");
+    openSettingsModal(); // Optionally open settings modal
+    return;
+  }
+
   const filesToSync = selectedFiles.value;
   const remoteBaseDir = "/来自FileManger同步"; // 可以根据需要修改或让用户配置
 
   // 简单的loading提示，后续可优化
-  const originalButtonText = document.querySelector('.toolbar button:nth-child(2)').textContent;
-  document.querySelector('.toolbar button:nth-child(2)').textContent = '同步中...';
-  document.querySelector('.toolbar button:nth-child(2)').disabled = true;
+  const syncButton = document.querySelector('.toolbar button:nth-child(2)');
+  let originalButtonText = '';
+  if (syncButton) {
+      originalButtonText = syncButton.textContent;
+      syncButton.textContent = '同步中...';
+      syncButton.disabled = true;
+  }
 
   let successCount = 0;
   let errorCount = 0;
@@ -227,7 +238,8 @@ async function syncSelectedToNetdisk() {
     try {
       const result = await invoke('upload_file_to_baidupan', {
         localPath: file.path,
-        remoteDir: remoteBaseDir, // 后端逻辑会在这个目录下创建文件
+        remoteDir: remoteBaseDir,
+        accessToken: token // <--- 确保这里传递了 token
       });
       console.log(`上传成功: ${file.name}`, result);
       alert(`文件 '${file.name}' 上传成功!\n响应: ${result}`);
@@ -239,8 +251,10 @@ async function syncSelectedToNetdisk() {
     }
   }
   // 恢复按钮状态
-  document.querySelector('.toolbar button:nth-child(2)').textContent = originalButtonText;
-  document.querySelector('.toolbar button:nth-child(2)').disabled = !canSyncToNetdisk.value; // Re-evaluate based on selection
+  if (syncButton) {
+      syncButton.textContent = originalButtonText;
+      syncButton.disabled = !canSyncToNetdisk.value; // Re-evaluate based on selection
+  }
 
   alert(`同步完成! 成功: ${successCount}，失败: ${errorCount}。详情请查看控制台。`);
 
@@ -505,9 +519,34 @@ function getFileTypeDescription(item, useShortDescription = true) { // 添加 us
   }
 }
 
+// --- Settings Modal Methods ---
+function openSettingsModal() {
+  baiduAccessTokenInput.value = localStorage.getItem('BAIDU_NETDISK_ACCESS_TOKEN_VUE') || '';
+  showSettingsModal.value = true;
+}
+
+function saveSettings() {
+  if (baiduAccessTokenInput.value.trim()) {
+    localStorage.setItem('BAIDU_NETDISK_ACCESS_TOKEN_VUE', baiduAccessTokenInput.value.trim());
+    storedAccessToken.value = baiduAccessTokenInput.value.trim(); // Update reactive ref
+    alert('Access Token 已保存!');
+  } else {
+    localStorage.removeItem('BAIDU_NETDISK_ACCESS_TOKEN_VUE');
+    storedAccessToken.value = ''; // Update reactive ref
+    alert('Access Token 已清除!');
+  }
+  closeSettingsModal();
+}
+
+function closeSettingsModal() {
+  showSettingsModal.value = false;
+}
+
 // --- 生命周期钩子 ---
 onMounted(() => {
   initializePath();
+  // Load stored token on mount
+  storedAccessToken.value = localStorage.getItem('BAIDU_NETDISK_ACCESS_TOKEN_VUE') || '';
 });
 
 </script>
@@ -526,8 +565,25 @@ onMounted(() => {
 .current-path {
   font-style: italic;
   color: #555;
-  margin-left: auto; /* Push path to the right */
+  /* margin-left: auto; Removed to allow settings button to be on the far right */
 }
+.settings-button {
+  margin-left: auto; /* Pushes to the far right */
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 5px; /* Adjust padding as needed */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.settings-button svg {
+  color: #555;
+}
+.settings-button:hover svg {
+  color: #000;
+}
+
 .loading-indicator, .error-message {
     margin-top: 1rem;
     padding: 0.5rem;
@@ -547,7 +603,7 @@ onMounted(() => {
   padding: 8px;
   text-align: left;
   white-space: nowrap;
-  vertical-align: middle; /* 确保图标和文字垂直居中 */
+  vertical-align: middle;
 }
 .file-list th {
   background-color: #f2f2f2;
@@ -557,11 +613,80 @@ onMounted(() => {
   cursor: pointer;
 }
 
-/* 调整列宽 */
-.file-list th:first-child, .file-list td:first-child { width: 30px; text-align: center;} /* Checkbox 列 */
-.file-list th:nth-child(2), .file-list td:nth-child(2) { width: auto; white-space: normal; } /* 名称列，允许换行 */
-.file-list th:nth-child(3), .file-list td:nth-child(3) { width: 120px; } /* 类型列 */
-.file-list th:nth-child(4), .file-list td:nth-child(4) { width: 100px; } /* 大小列 */
-.file-list th:nth-child(5), .file-list td:nth-child(5) { width: 50px; text-align: center; } /* 属性列 */
+.file-list th:first-child, .file-list td:first-child { width: 30px; text-align: center;}
+.file-list th:nth-child(2), .file-list td:nth-child(2) { width: auto; white-space: normal; }
+.file-list th:nth-child(3), .file-list td:nth-child(3) { width: 120px; }
+.file-list th:nth-child(4), .file-list td:nth-child(4) { width: 100px; }
+.file-list th:nth-child(5), .file-list td:nth-child(5) { width: 50px; text-align: center; }
 
+/* Modal Styles */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background-color: white;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  min-width: 300px; /* Or your preferred width */
+  max-width: 500px; /* Or your preferred max-width */
+  /* z-index: 1001; /* Generally not needed if overlay has a higher z-index */
+}
+
+.modal-content h3 {
+  margin-top: 0;
+  margin-bottom: 15px;
+}
+
+.form-group {
+  margin-bottom: 15px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 5px;
+}
+
+/* Ensure input takes full width within padding */
+.form-group input[type="password"], .form-group input[type="text"] {
+  width: calc(100% - 22px); /* 2px for border, 20px for padding (10px each side) */
+  padding: 8px 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  box-sizing: border-box; /* Important for width calculation with padding and border */
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.modal-actions button {
+  padding: 8px 15px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.modal-actions button:first-of-type { /* Save button */
+  background-color: #4CAF50;
+  color: white;
+}
+
+.modal-actions button:last-of-type { /* Cancel button */
+  background-color: #f44336;
+  color: white;
+}
 </style> 
