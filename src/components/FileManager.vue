@@ -90,7 +90,6 @@ function openItem(item) {
     openItemDirectory(item);
   } else {
     console.log(`尝试打开文件: ${item.path}`);
-    alert(`打开文件: ${item.name}`);
     // TODO: File opening logic
   }
 }

@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { ref, computed, readonly } from 'vue'; // Import ref, computed, readonly
+import { push } from 'notivue'; // Import Notivue push
 
 const BAIDU_TOKEN_STORAGE_KEY = 'BAIDU_NETDISK_ACCESS_TOKEN_VUE';
 
@@ -25,12 +26,12 @@ function setAccessToken(newToken) {
         localStorage.setItem(BAIDU_TOKEN_STORAGE_KEY, tokenToSave);
         accessToken.value = tokenToSave;
         console.log('[useBaiduNetdisk] Token saved.');
-        alert('Access Token 已保存!'); // Keep feedback for now
+        push.success('Access Token 已保存!'); 
     } else {
         localStorage.removeItem(BAIDU_TOKEN_STORAGE_KEY);
         accessToken.value = '';
         console.log('[useBaiduNetdisk] Token cleared.');
-        alert('Access Token 已清除!'); // Keep feedback for now
+        push.info('Access Token 已清除!'); 
     }
 }
 
@@ -91,13 +92,11 @@ async function _uploadSingleFile(localPath, remoteDir) {
 
 async function syncFiles(filesToSync, remoteBaseDir) {
     if (!accessToken.value) {
-        alert("请先在设置中配置百度网盘Access Token!"); 
-        // Maybe emit an event or return a specific status instead of alert?
-        // For now, keep alert, but ideally component handles this via isAvailable check.
+        push.warning("请先在设置中配置百度网盘Access Token!"); 
         return; 
     }
     if (!filesToSync || filesToSync.length === 0) {
-        alert("没有选中任何文件进行同步。");
+        push.warning("没有选中任何文件进行同步。");
         return;
     }
 
@@ -132,8 +131,16 @@ async function syncFiles(filesToSync, remoteBaseDir) {
     isSyncing.value = false;
     console.log(`[useBaiduNetdisk] Sync finished. Success: ${successCount}, Failed: ${errorCount}`);
 
-    // TODO: Replace alert with better notification system (e.g., Toast)
-    alert(`同步完成! 成功: ${successCount}，失败: ${errorCount}。${errorCount > 0 ? '详情请查看控制台。' : ''}`);
+    if (errorCount === 0 && successCount > 0) {
+        push.success(`同步完成! ${successCount}个文件全部成功。`);
+    } else if (successCount > 0 && errorCount > 0) {
+        push.info(`同步部分完成。成功: ${successCount}，失败: ${errorCount}。详情请查看控制台。`);
+    } else if (errorCount > 0 && successCount === 0) {
+        push.error(`同步失败! ${errorCount}个文件全部失败。详情请查看控制台。`);
+    } else {
+        // This case should ideally not be reached if a warning for no files is pushed earlier
+        push.info("没有文件被同步。"); 
+    }
 
     // Returning status might be useful
     return { successCount, errorCount };

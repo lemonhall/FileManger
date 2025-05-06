@@ -36,6 +36,7 @@ import { ref, watch, defineProps, defineEmits, onMounted } from 'vue';
 // import { useBaiduNetdisk } from '../composables/useBaiduNetdisk'; // Now use it internally
 import { useBaiduNetdisk } from '../composables/useBaiduNetdisk';
 import { formatSize, vipTypeToString } from '../utils/formatters'; // Import formatters
+import { push } from 'notivue'; // Import Notivue push
 
 // const props = defineProps({ // No longer need initialAccessToken
 //   show: Boolean,
@@ -93,7 +94,7 @@ function closeModal() {
 async function checkTokenAndFetchInfo() {
   const token = accessTokenInput.value.trim();
   if (!token) {
-    alert("请输入有效的 Access Token!");
+    push.warning("请输入有效的 Access Token!");
     return;
   }
 
