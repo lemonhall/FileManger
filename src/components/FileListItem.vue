@@ -8,6 +8,7 @@
     <td>{{ currentFileTypeDescription }}</td>
     <td>{{ formattedSize }}</td>
     <td>{{ item.readonly ? 'R' : '' }}</td>
+    <td>{{ formattedLastUploaded }}</td>
   </tr>
 </template>
 
@@ -27,6 +28,7 @@ import {
     executableIcon 
 } from '../utils/icons';
 import { fileTypeDescriptions } from '../utils/fileTypes';
+import { useUploadTimestamps } from '../composables/useUploadTimestamps'; // Import composable
 
 const props = defineProps({
   item: {
@@ -36,6 +38,29 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['item-dblclick', 'update:selected']);
+
+// Get timestamp for the current file
+const { getTimestampForFile } = useUploadTimestamps();
+const lastUploadedTimestamp = computed(() => getTimestampForFile(props.item.path));
+
+const formattedLastUploaded = computed(() => {
+  const ts = lastUploadedTimestamp.value;
+  if (!ts) return '-';
+  try {
+    // Format the timestamp (e.g., YYYY-MM-DD HH:mm)
+    const date = new Date(ts);
+    // Basic formatting, can be improved with a date formatting library if needed
+    const year = date.getFullYear();
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const day = date.getDate().toString().padStart(2, '0');
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    return `${year}-${month}-${day} ${hours}:${minutes}`;
+  } catch (e) {
+    console.error("Error formatting timestamp:", ts, e);
+    return '日期无效';
+  }
+});
 
 const onDblClick = () => {
   emit('item-dblclick', props.item);
@@ -107,5 +132,9 @@ td {
 }
 td:nth-child(2) { /* Name column */
   white-space: normal; /* Allow name to wrap if very long */
+}
+/* Ensure the new column has reasonable style if needed */
+td:last-child {
+  /* text-align: right; */ /* Example if you want to right-align dates */
 }
 </style> 

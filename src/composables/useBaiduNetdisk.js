@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { ref, computed, readonly } from 'vue'; // Import ref, computed, readonly
 import { push } from 'notivue'; // Import Notivue push
+import { useUploadTimestamps } from './useUploadTimestamps'; // Import the new composable
 
 const BAIDU_TOKEN_STORAGE_KEY = 'BAIDU_NETDISK_ACCESS_TOKEN_VUE';
 
@@ -12,6 +13,10 @@ const isLoading = ref(false);
 const error = ref(null);
 const isSyncing = ref(false);
 const syncError = ref(null);
+
+// Get the timestamp update function from the other composable
+// We call useUploadTimestamps() here at the module level to get a shared instance of its state and methods.
+const { updateFileTimestamp: recordFileUploadedTimestamp } = useUploadTimestamps();
 
 // Function to initialize token from localStorage
 function initAccessToken() {
@@ -93,11 +98,11 @@ async function _uploadSingleFile(localPath, remoteDir) {
 async function syncFiles(filesToSync, remoteBaseDir) {
     if (!accessToken.value) {
         push.warning("请先在设置中配置百度网盘Access Token!"); 
-        return; 
+        return { successCount: 0, errorCount: filesToSync?.length || 0 }; // Return status
     }
     if (!filesToSync || filesToSync.length === 0) {
         push.warning("没有选中任何文件进行同步。");
-        return;
+        return { successCount: 0, errorCount: 0 }; // Return status
     }
 
     isSyncing.value = true;
@@ -113,15 +118,16 @@ async function syncFiles(filesToSync, remoteBaseDir) {
     for (let i = 0; i < totalFiles; i++) {
         const file = filesToSync[i];
         // TODO: Update progress (e.g., current file index / total files)
-        console.log(`[useBaiduNetdisk] Syncing file ${i + 1}/${totalFiles}: ${file.name}`);
+        console.log(`[useBaiduNetdisk] Syncing file ${i + 1}/${totalFiles}: ${file.name} (Path: ${file.path})`);
         try {
-            const result = await _uploadSingleFile(file.path, remoteBaseDir);
-            console.log(`[useBaiduNetdisk] Upload success: ${file.name}`, result);
-            // Maybe emit progress event?
+            await _uploadSingleFile(file.path, remoteBaseDir);
+            console.log(`[useBaiduNetdisk] Upload success: ${file.name}`);
             successCount++;
+            // After successful upload, record the timestamp
+            await recordFileUploadedTimestamp(file.path, Date.now()); 
         } catch (err) {
-            console.error(`[useBaiduNetdisk] Upload failed: ${file.name}`, err);
-            syncError.value = `文件 '${file.name}' 上传失败: ${err}`; // Store the last error
+            console.error(`[useBaiduNetdisk] Upload failed for ${file.name} (Path: ${file.path}):`, err);
+            syncError.value = `文件 '${file.name}' 上传失败: ${err}`;
             errorCount++;
             // Decide whether to continue or stop on first error?
             // For now, continue and report summary.
@@ -137,9 +143,12 @@ async function syncFiles(filesToSync, remoteBaseDir) {
         push.info(`同步部分完成。成功: ${successCount}，失败: ${errorCount}。详情请查看控制台。`);
     } else if (errorCount > 0 && successCount === 0) {
         push.error(`同步失败! ${errorCount}个文件全部失败。详情请查看控制台。`);
+    } else if (successCount === 0 && errorCount === 0 && totalFiles > 0) {
+        // This case might occur if pre-flight checks failed for all, though unlikely with current structure
+        push.warning("没有文件成功同步，也未报告错误。"); 
     } else {
-        // This case should ideally not be reached if a warning for no files is pushed earlier
-        push.info("没有文件被同步。"); 
+        // This case (no files to sync) is handled by the initial check, but as a fallback:
+        // push.info("没有文件被同步。"); // Already handled
     }
 
     // Returning status might be useful

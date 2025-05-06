@@ -1,16 +1,115 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::env;
-// use std::path::Path; // <--- 移除未使用的导入
-use tauri::Manager;
-use log::{info, error}; // 添加 log 导入
+use std::path::PathBuf;
+use std::collections::HashMap;
+use std::fs::File;
+use std::io::{BufReader, BufWriter};
+use tauri::{AppHandle, Manager};
+use log::{info, error, warn};
 
-mod baidu_uploader; // <--- 添加模块声明
-mod baidu_userinfo; // <--- 添加模块声明
-use baidu_uploader::BaiduUploader; // <--- 使用模块
-use baidu_userinfo::{BaiduUserInfo, UserInfoResponse, QuotaResponse}; // <--- Import structs
+mod baidu_uploader;
+mod baidu_userinfo;
+use baidu_uploader::BaiduUploader;
+use baidu_userinfo::{BaiduUserInfo, UserInfoResponse, QuotaResponse};
 
-// 定义返回给前端的数据结构
+const TIMESTAMPS_FILE_NAME: &str = "upload_timestamps.json";
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct TimestampEntry {
+    #[serde(rename = "lastUploaded")]
+    last_uploaded: u64,
+}
+
+fn get_timestamps_file_path(app_handle: &AppHandle) -> Result<PathBuf, String> {
+    let app_data_dir = app_handle.path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+    
+    if !app_data_dir.exists() {
+        fs::create_dir_all(&app_data_dir)
+            .map_err(|e| format!("Failed to create app data directory at {:?}: {}", app_data_dir, e))?;
+    }
+    Ok(app_data_dir.join(TIMESTAMPS_FILE_NAME))
+}
+
+fn load_timestamps_from_file(app_handle: &AppHandle) -> Result<HashMap<String, TimestampEntry>, String> {
+    let path = get_timestamps_file_path(app_handle)?;
+    if !path.exists() {
+        info!("Timestamps file not found at {:?}, returning empty map.", path);
+        return Ok(HashMap::new());
+    }
+
+    let file = File::open(&path)
+        .map_err(|e| format!("Failed to open timestamps file at {:?}: {}", path, e))?;
+    let reader = BufReader::new(file);
+    
+    match serde_json::from_reader(reader) {
+        Ok(map) => Ok(map),
+        Err(e) if e.is_eof() => {
+            warn!("Timestamps file at {:?} is empty, returning empty map.", path);
+            Ok(HashMap::new())
+        }
+        Err(e) => {
+            error!("Failed to deserialize timestamps from {:?}: {}", path, e);
+            Err(format!("Failed to read or parse timestamps file: {}", e))
+        }
+    }
+}
+
+fn save_timestamps_to_file(app_handle: &AppHandle, timestamps: &HashMap<String, TimestampEntry>) -> Result<(), String> {
+    let path = get_timestamps_file_path(app_handle)?;
+    let temp_path = path.with_extension("json.tmp");
+
+    let temp_file = File::create(&temp_path)
+        .map_err(|e| format!("Failed to create temporary timestamps file at {:?}: {}", temp_path, e))?;
+    let writer = BufWriter::new(temp_file);
+    
+    serde_json::to_writer_pretty(writer, timestamps)
+        .map_err(|e| format!("Failed to serialize timestamps to temporary file {:?}: {}", temp_path, e))?;
+
+    fs::rename(&temp_path, &path)
+        .map_err(|e| format!("Failed to rename temporary timestamps file {:?} to {:?}: {}", temp_path, path, e))?;
+    
+    info!("Successfully saved timestamps to {:?}", path);
+    Ok(())
+}
+
+#[tauri::command]
+fn get_all_upload_timestamps(app_handle: AppHandle) -> Result<HashMap<String, u64>, String> {
+    info!("Fetching all upload timestamps");
+    match load_timestamps_from_file(&app_handle) {
+        Ok(timestamp_entries) => {
+            let result = timestamp_entries.into_iter()
+                .map(|(path, entry)| (path, entry.last_uploaded))
+                .collect();
+            Ok(result)
+        }
+        Err(e) => {
+            error!("Error in get_all_upload_timestamps: {}", e);
+            Err(e)
+        }
+    }
+}
+
+#[tauri::command]
+fn set_upload_timestamp(app_handle: AppHandle, file_path: String, timestamp: u64) -> Result<(), String> {
+    info!("Setting upload timestamp for {}: {}", file_path, timestamp);
+    let mut timestamps = load_timestamps_from_file(&app_handle)
+        .map_err(|e| {
+            error!("Failed to load timestamps in set_upload_timestamp for {}: {}", file_path, e);
+            e
+        })?;
+
+    timestamps.insert(file_path.clone(), TimestampEntry { last_uploaded: timestamp });
+    
+    save_timestamps_to_file(&app_handle, &timestamps)
+        .map_err(|e| {
+            error!("Failed to save timestamps in set_upload_timestamp for {}: {}", file_path, e);
+            e
+        })
+}
+
 #[derive(Serialize, Debug)]
 struct FileInfo {
     name: String,
@@ -20,16 +119,15 @@ struct FileInfo {
     readonly: bool,
 }
 
-// 定义 Tauri 命令
 #[tauri::command]
 fn list_directory(path: String) -> Result<Vec<FileInfo>, String> {
-    println!("Rust: Received path: {}", path);
+    info!("Rust: Received path for list_directory: {}", path);
     let mut entries = Vec::new();
     let read_dir = match fs::read_dir(&path) {
         Ok(dir) => dir,
         Err(e) => {
             let error_msg = format!("无法读取目录 '{}': {}", path, e);
-            eprintln!("{}", error_msg);
+            error!("{}", error_msg);
             return Err(error_msg);
         }
     };
@@ -41,7 +139,7 @@ fn list_directory(path: String) -> Result<Vec<FileInfo>, String> {
                 let metadata = match entry.metadata() {
                     Ok(meta) => meta,
                     Err(e) => {
-                        eprintln!("无法获取元数据 {:?}: {}", path_buf, e);
+                        error!("无法获取元数据 {:?}: {}", path_buf, e);
                         continue;
                     }
                 };
@@ -60,7 +158,7 @@ fn list_directory(path: String) -> Result<Vec<FileInfo>, String> {
                 });
             }
             Err(e) => {
-                eprintln!("读取目录条目时出错: {}", e);
+                error!("读取目录条目时出错: {}", e);
             }
         }
     }
@@ -69,32 +167,28 @@ fn list_directory(path: String) -> Result<Vec<FileInfo>, String> {
 
 #[tauri::command]
 fn get_initial_path(app: tauri::AppHandle) -> Result<String, String> {
-    // 1. 尝试获取可执行文件所在的目录
     let exe_dir_path = env::current_exe()
-        .ok() // Option<PathBuf>
-        .and_then(|p| p.parent().map(|p| p.to_path_buf())); // Option<PathBuf>
+        .ok()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()));
 
     let initial_path_result = match exe_dir_path {
-        Some(dir) => Ok(dir), // 如果成功获取 exe 目录，使用它
+        Some(dir) => Ok(dir),
         None => {
-            // 2. 如果获取 exe 目录失败，回退到尝试 home 目录
-            println!("无法获取 exe 目录，尝试 home 目录...");
+            warn!("无法获取 exe 目录，尝试 home 目录...");
             app.path().home_dir()
-                // 3. 如果 home 目录也失败，回退到 app data 目录
                 .or_else(|_| {
-                    println!("无法获取 home 目录，尝试 app data 目录...");
+                    warn!("无法获取 home 目录，尝试 app data 目录...");
                     app.path().app_data_dir()
                 })
         }
     };
 
-    // 处理最终结果
     let path = initial_path_result
         .map_err(|e| format!("无法获取初始路径: {}", e))?
         .to_string_lossy()
         .into_owned();
 
-    println!("Rust: Determined initial path: {}", path);
+    info!("Rust: Determined initial path: {}", path);
     Ok(path)
 }
 
@@ -102,7 +196,6 @@ fn get_initial_path(app: tauri::AppHandle) -> Result<String, String> {
 async fn upload_file_to_baidupan(local_path: String, remote_dir: String, access_token: String, _app_handle: tauri::AppHandle) -> Result<String, String> {
     info!("Attempting to upload: {} to remote dir: {} using provided token", local_path, remote_dir);
 
-    // 直接使用从前端传递过来的 access_token
     if access_token.is_empty() {
         error!("Access Token 为空，无法上传");
         return Err("Access Token 为空，请在设置中配置".to_string());
@@ -110,15 +203,12 @@ async fn upload_file_to_baidupan(local_path: String, remote_dir: String, access_
 
     let uploader = BaiduUploader::new(access_token);
 
-    // 确保 remote_dir 是一个有效的目录路径，例如 "/apps/myapp" 或 "/来自：mcp_server"
-    // 这里我们直接使用用户提供的值，但实际应用中可能需要验证
-    let default_remote_dir = "/来自：rust_file_manager_uploads"; // 默认上传目录
+    let default_remote_dir = "/来自：rust_file_manager_uploads";
     let target_remote_dir = if remote_dir.is_empty() { default_remote_dir } else { &remote_dir };
 
     match uploader.upload_file(&local_path, target_remote_dir).await {
         Ok(response_value) => {
             info!("文件上传成功: {:?}", response_value);
-            // 将 serde_json::Value 转换为字符串返回
             serde_json::to_string(&response_value)
                 .map_err(|e| format!("序列化上传响应失败: {}", e))
         }
@@ -129,7 +219,6 @@ async fn upload_file_to_baidupan(local_path: String, remote_dir: String, access_
     }
 }
 
-// --- 新增命令：获取百度用户信息和配额 ---
 #[tauri::command]
 async fn get_baidu_user_info(access_token: String) -> Result<UserInfoResponse, String> {
     if access_token.is_empty() {
@@ -148,13 +237,12 @@ async fn get_baidu_user_info(access_token: String) -> Result<UserInfoResponse, S
 
 #[tauri::command]
 async fn get_baidu_quota(access_token: String) -> Result<QuotaResponse, String> {
-     if access_token.is_empty() {
+    if access_token.is_empty() {
         error!("Access Token is empty when trying to get quota");
         return Err("Access Token is empty. Please configure it in settings.".to_string());
     }
     info!("Fetching Baidu quota info...");
     let user_info_fetcher = BaiduUserInfo::new(access_token);
-    // Pass None for optional checkexpire/checkfree for now
     user_info_fetcher.get_quota(None, None).await
          .map_err(|e| {
              let err_msg = format!("Failed to get quota info: {}", e);
@@ -169,7 +257,7 @@ pub fn run() {
     .setup(|app| {
       if cfg!(debug_assertions) {
         let log_plugin = tauri_plugin_log::Builder::default()
-            .level(log::LevelFilter::Info);
+            .level(if cfg!(debug_assertions) { log::LevelFilter::Info } else { log::LevelFilter::Warn });
 
         #[cfg(debug_assertions)]
         let log_plugin = log_plugin.with_colors(tauri_plugin_log::fern::colors::ColoredLevelConfig::default());
@@ -183,7 +271,9 @@ pub fn run() {
         get_initial_path,
         upload_file_to_baidupan,
         get_baidu_user_info,
-        get_baidu_quota
+        get_baidu_quota,
+        get_all_upload_timestamps,
+        set_upload_timestamp
     ])
     .run(tauri::generate_context!("tauri.conf.json"))
     .expect("error while running tauri application");
