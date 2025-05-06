@@ -276,32 +276,75 @@ async function initializePath() {
 function goUp() {
   if (!canGoUp.value || !currentPath.value) return;
 
-    const parts = currentPath.value.replace(/\\\\$/, '').split(/[\\/]/);
-    if (parts.length <= 1 && !/^[a-zA-Z]:$/.test(parts[0])) {
-        // Already at root (e.g., '/') or invalid path
+    const isWindowsPath = currentPath.value.includes('\\');
+    // Normalize path by removing trailing slashes before splitting, 
+    // but be careful not to remove the slash from a root like "C:\\" or "/"
+    let pathToProcess = currentPath.value;
+    if (pathToProcess.match(/^[a-zA-Z]:\\+$/)) { // Matches C:\, C:\\, etc.
+        // If it's just the drive root, cannot go up further with this logic
+        // This case should ideally be caught by canGoUp, but double check here.
+        console.warn("Already at drive root or invalid state for goUp:", currentPath.value);
+        return;
+    } else if (pathToProcess !== '/' && (pathToProcess.endsWith('\\') || pathToProcess.endsWith('/'))) {
+        pathToProcess = pathToProcess.substring(0, pathToProcess.length - 1);
+    }
+
+    const parts = pathToProcess.split(isWindowsPath ? /\\/ : /\//);
+
+    // If original path was something like "C:\Users" or "/home/user"
+    // after pop, parts would be ["C:", "Users"] -> ["C:"] or ["", "home", "user"] -> ["", "home"]
+    if (parts.length <= 1 && isWindowsPath && /^[a-zA-Z]:$/.test(parts[0])) {
+        // This means we are at a path like C:\file or C:\folder, and going up should lead to C:\
+        // or we are at C: (which should have been caught by trailing slash normalization or canGoUp)
+        // For C:\folder -> C:\
+        if (parts[0].endsWith(':')) {
+            listDirectory(parts[0] + '\\');
+            return;
+        }
+        // Other cases like single part being just "C:" should ideally not happen if path is well-formed like C:\foo
+    } else if (parts.length === 1 && !isWindowsPath && parts[0] === '') {
+        // This means we are at /file or /folder, and going up should lead to /
+        listDirectory('/');
         return;
     }
-     if (parts.length === 1 && /^[a-zA-Z]:$/.test(parts[0])) {
-         // Already at drive root (e.g., C:)
-         return;
-     }
-
 
     parts.pop();
-    let parentPath = parts.join(currentPath.value.includes('\\') ? '\\\\' : '/');
 
-    // Handle going up from root directory (e.g., C:\Users -> C:\)
-    // Or handle root like /home -> /
-    if (/^[a-zA-Z]:$/.test(parts[0]) && parts.length === 1) {
-        parentPath += '\\'; // Append backslash for drive root C:\
-    } else if (parentPath === '' && currentPath.value.startsWith('/')) {
-        parentPath = '/'; // Set to root for Unix-like paths
-    } else if (parentPath === '' && /^[a-zA-Z]:/.test(currentPath.value)) {
-        // This case might occur if path was "C:", should already be handled above
-         console.warn("Unexpected empty parent path for drive:", currentPath.value);
-         return; // Avoid navigating to empty string
+    let parentPath;
+    if (isWindowsPath) {
+        if (parts.length === 1 && /^[a-zA-Z]:$/.test(parts[0])) {
+            // Drive letter, e.g., C:, parent is C:\\
+            parentPath = parts[0] + '\\';
+        } else {
+            parentPath = parts.join('\\');
+            // If the original path was a root of a share or a deeper path that becomes empty
+            // this join might be problematic. E.g. \\server\share -> parts ['', '', 'server', 'share']
+            // For now, assuming simple C:\path structures.
+        }
+    } else {
+        // POSIX paths
+        if (parts.length === 1 && parts[0] === '') {
+            // Parent is the root directory "/"
+            parentPath = '/';
+        } else {
+            parentPath = parts.join('/');
+            if (parentPath === '' && currentPath.value.startsWith('/')) {
+                // This can happen if currentPath was like /foo, parts becomes [''] after pop, join is ''
+                parentPath = '/';
+            }
+        }
     }
-
+    
+    // Final check for empty or invalid parentPath before listing
+    if (!parentPath) {
+        // This might happen for Unix root if not handled above, or other edge cases
+        if (!isWindowsPath && currentPath.value.startsWith('/')) {
+            parentPath = '/'; // Default to root if all else fails for POSIX
+        } else {
+            console.warn("Could not determine parent path for:", currentPath.value, "Resulting parts:", parts);
+            return; // Avoid listing an empty or invalid path
+        }
+    }
 
     listDirectory(parentPath);
 }
