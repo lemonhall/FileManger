@@ -4,6 +4,10 @@ use std::env;
 use std::path::Path;
 // use std::path::PathBuf; // 移除未使用的导入
 use tauri::Manager;
+use log::{info, error}; // 添加 log 导入
+
+mod baidu_uploader; // <--- 添加模块声明
+use baidu_uploader::BaiduUploader; // <--- 使用模块
 
 // 定义返回给前端的数据结构
 #[derive(Serialize, Debug)]
@@ -93,22 +97,56 @@ fn get_initial_path(app: tauri::AppHandle) -> Result<String, String> {
     Ok(path)
 }
 
+#[tauri::command]
+async fn upload_file_to_baidupan(local_path: String, remote_dir: String, access_token: String, app_handle: tauri::AppHandle) -> Result<String, String> {
+    info!("Attempting to upload: {} to remote dir: {} using provided token", local_path, remote_dir);
+
+    // 直接使用从前端传递过来的 access_token
+    if access_token.is_empty() {
+        error!("Access Token 为空，无法上传");
+        return Err("Access Token 为空，请在设置中配置".to_string());
+    }
+
+    let uploader = BaiduUploader::new(access_token);
+
+    // 确保 remote_dir 是一个有效的目录路径，例如 "/apps/myapp" 或 "/来自：mcp_server"
+    // 这里我们直接使用用户提供的值，但实际应用中可能需要验证
+    let default_remote_dir = "/来自：rust_file_manager_uploads"; // 默认上传目录
+    let target_remote_dir = if remote_dir.is_empty() { default_remote_dir } else { &remote_dir };
+
+    match uploader.upload_file(&local_path, target_remote_dir).await {
+        Ok(response_value) => {
+            info!("文件上传成功: {:?}", response_value);
+            // 将 serde_json::Value 转换为字符串返回
+            serde_json::to_string(&response_value)
+                .map_err(|e| format!("序列化上传响应失败: {}", e))
+        }
+        Err(e) => {
+            error!("文件上传失败: {}", e);
+            Err(format!("文件上传失败: {}", e))
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
     .setup(|app| {
       if cfg!(debug_assertions) {
-        app.handle().plugin(
-          tauri_plugin_log::Builder::default()
-            .level(log::LevelFilter::Info)
-            .build(),
-        )?;
+        let log_plugin = tauri_plugin_log::Builder::default()
+            .level(log::LevelFilter::Info);
+
+        #[cfg(debug_assertions)]
+        let log_plugin = log_plugin.with_colors(tauri_plugin_log::fern::colors::ColoredLevelConfig::default());
+        
+        app.handle().plugin(log_plugin.build())?;
       }
       Ok(())
     })
     .invoke_handler(tauri::generate_handler![
         list_directory,
-        get_initial_path
+        get_initial_path,
+        upload_file_to_baidupan // <--- 添加新的 command
     ])
     .run(tauri::generate_context!("tauri.conf.json"))
     .expect("error while running tauri application");

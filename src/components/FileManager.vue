@@ -2,7 +2,13 @@
   <div class="file-manager">
     <div class="toolbar">
       <button @click="goUp" :disabled="!canGoUp">向上</button>
+      <button @click="syncSelectedToNetdisk" :disabled="!canSyncToNetdisk">同步到网盘</button>
       <span class="current-path">当前路径: {{ currentPath }}</span>
+      <button @click="openSettingsModal" class="settings-button" title="设置百度网盘Access Token">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="18px" height="18px">
+          <path d="M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.32-.07.65-.07.98s.03.66.07.98l-2.11 1.65c-.19.15-.24.42.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.61-.25 1.17-.59 1.69-.98l2.49 1c.23.09.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z"/>
+        </svg>
+      </button>
     </div>
     <div v-if="loading" class="loading-indicator">加载中...</div>
     <div v-if="error" class="error-message">错误: {{ error }}</div>
@@ -34,6 +40,21 @@
         </tbody>
       </table>
     </div>
+
+    <!-- Settings Modal -->
+    <div v-if="showSettingsModal" class="modal-overlay" @click.self="closeSettingsModal">
+      <div class="modal-content">
+        <h3>百度网盘设置</h3>
+        <div class="form-group">
+          <label for="baidu-token">Access Token:</label>
+          <input type="password" id="baidu-token" v-model="baiduAccessTokenInput" placeholder="请输入百度网盘Access Token">
+        </div>
+        <div class="modal-actions">
+          <button @click="saveSettings">保存</button>
+          <button @click="closeSettingsModal">取消</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -46,11 +67,22 @@ const currentPath = ref('');
 const items = ref([]);
 const loading = ref(true);
 const error = ref(null);
+const showSettingsModal = ref(false);
+const baiduAccessTokenInput = ref('');
+const storedAccessToken = ref(''); // To store the token loaded from localStorage
 
 // --- 计算属性 ---
 const canGoUp = computed(() => {
     // Basic check, needs improvement for root paths (C:\\, /)
     return currentPath.value && currentPath.value !== '/' && !/^[a-zA-Z]:\\\\?$/.test(currentPath.value);
+});
+
+const selectedFiles = computed(() => {
+  return items.value.filter(item => item.selected && !item.is_dir);
+});
+
+const canSyncToNetdisk = computed(() => {
+  return selectedFiles.value.length > 0;
 });
 
 // --- SVG 图标定义 ---
@@ -170,6 +202,50 @@ function getFileIcon(item) {
     default:
       return fileIcon;
   }
+}
+
+// --- 新增方法: 同步选中文件到网盘 ---
+async function syncSelectedToNetdisk() {
+  if (!canSyncToNetdisk.value) {
+    alert("请至少选择一个文件进行同步。");
+    return;
+  }
+
+  const filesToSync = selectedFiles.value;
+  const remoteBaseDir = "/来自FileManger同步"; // 可以根据需要修改或让用户配置
+
+  // 简单的loading提示，后续可优化
+  const originalButtonText = document.querySelector('.toolbar button:nth-child(2)').textContent;
+  document.querySelector('.toolbar button:nth-child(2)').textContent = '同步中...';
+  document.querySelector('.toolbar button:nth-child(2)').disabled = true;
+
+  let successCount = 0;
+  let errorCount = 0;
+
+  for (const file of filesToSync) {
+    console.log(`准备上传: ${file.path} 到 ${remoteBaseDir}`);
+    try {
+      const result = await invoke('upload_file_to_baidupan', {
+        localPath: file.path,
+        remoteDir: remoteBaseDir, // 后端逻辑会在这个目录下创建文件
+      });
+      console.log(`上传成功: ${file.name}`, result);
+      alert(`文件 '${file.name}' 上传成功!\n响应: ${result}`);
+      successCount++;
+    } catch (err) {
+      console.error(`上传失败: ${file.name}`, err);
+      alert(`文件 '${file.name}' 上传失败!\n错误: ${err}`);
+      errorCount++;
+    }
+  }
+  // 恢复按钮状态
+  document.querySelector('.toolbar button:nth-child(2)').textContent = originalButtonText;
+  document.querySelector('.toolbar button:nth-child(2)').disabled = !canSyncToNetdisk.value; // Re-evaluate based on selection
+
+  alert(`同步完成! 成功: ${successCount}，失败: ${errorCount}。详情请查看控制台。`);
+
+  // 可选: 上传后取消选择
+  items.value.forEach(item => item.selected = false);
 }
 
 // --- 方法 ---
