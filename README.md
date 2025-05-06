@@ -28,13 +28,15 @@
 为了更好地组织和维护前端代码，项目采用了以下结构和模块化方式：
 
 *   **核心组件**:
-    *   `src/components/FileManager.vue`: 作为应用的顶层协调组件，负责整体布局、工具栏渲染、初始化组合式函数、处理来自子组件的事件（如文件选择、双击、保存Token），以及调用组合式函数执行操作（如同步到网盘）。
-    *   `src/components/SettingsModal.vue`: 一个独立的Vue组件，专门用于处理百度网盘的 Access Token 配置。用户可以在此弹窗中输入、保存 Access Token，并查看相关的用户和配额信息（通过 `useBaiduNetdisk`）。它通过 props 和 events 与 `FileManager.vue` 父组件通信。
+    *   `src/components/FileManager.vue`: 作为应用的顶层协调组件，负责整合 `Toolbar`、`FileList` 和 `SettingsModal`。它负责初始化组合式函数 (`useFileSystem`, `useBaiduNetdisk`)，响应来自子组件的事件（如导航、文件操作触发、打开设置），并调用组合式函数执行相应的逻辑。
+    *   `src/components/Toolbar.vue`: 负责展示文件管理器的工具栏，包括当前路径显示、向上导航按钮、同步到网盘按钮以及打开设置的按钮。它通过 props 接收状态（如当前路径、是否能向上、是否能同步），并通过 emits 将用户操作（如点击按钮）通知给父组件 `FileManager.vue`。
+    *   `src/components/FileList.vue`: 负责展示文件和文件夹列表。它接收文件数据 (`items`)、加载状态 (`loading`) 和错误信息 (`error`) 作为 props。它内部使用 `FileListItem.vue` 来渲染每一行，并处理用户的交互事件（如双击打开、勾选文件/文件夹），通过 emits 将这些事件冒泡给父组件 `FileManager.vue`。
     *   `src/components/FileListItem.vue`: 负责渲染文件列表中的**单行**。它接收单个文件/文件夹 `item` 作为 prop，展示其图标、名称、类型、大小等信息，并处理该行的双击和复选框状态变化事件，通过 emit 通知父组件。
+    *   `src/components/SettingsModal.vue`: 一个独立的Vue组件，专门用于处理百度网盘的 Access Token 配置。用户可以在此弹窗中输入、保存 Access Token。它内部使用 `useBaiduNetdisk` 组合式函数来获取和设置 Token，并调用该 composable 中的方法来显示相关的用户和配额信息。它通过 props (`show`) 控制显隐，并通过 emits (`close`) 通知父组件关闭。
 
 *   **组合式函数 (Composables)**:
     *   `src/composables/useFileSystem.js`: 封装了核心的文件系统浏览逻辑。它管理着当前路径 (`currentPath`)、文件/文件夹列表 (`items`)、加载状态 (`loading`) 和错误状态 (`error`)。提供了获取初始路径、列出目录内容、向上导航和打开目录的方法，供 `FileManager.vue` 调用。
-    *   `src/composables/useBaiduNetdisk.js`: 封装了所有与百度网盘 API 交互的逻辑。它包括获取用户信息、查询存储配额、以及执行文件上传等功能。此函数接收 Access Token 作为响应式引用，并被 `FileManager.vue` 和 `SettingsModal.vue` 用来执行与网盘相关的操作。
+    *   `src/composables/useBaiduNetdisk.js`: 封装了所有与百度网盘 API 交互的逻辑。它内部管理 Access Token（从 `localStorage` 初始化，并提供方法进行更新），提供判断网盘服务是否可用的状态 (`isAvailable`)。它还包含了获取用户信息、查询存储配额，以及将多个文件同步（上传）到网盘指定目录等核心功能。此 composable 被 `FileManager.vue` 用于触发同步操作，被 `SettingsModal.vue` 用于 Token 管理和信息展示。
 
 *   **工具模块 (Utils)**:
     *   `src/utils/icons.js`: 此模块集中管理和导出应用中用到的所有SVG图标字符串，供 `FileListItem.vue` 使用。

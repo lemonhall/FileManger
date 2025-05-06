@@ -23,7 +23,7 @@
 
       <div class="modal-actions">
         <button @click="checkTokenAndFetchInfo" :disabled="!accessTokenInput.trim() || baiduApiIsLoading">检查Token并获取信息</button>
-        <button @click="saveToken">保存</button>
+        <button @click="handleSave">保存</button>
         <button @click="closeModal">取消</button>
       </div>
     </div>
@@ -31,54 +31,57 @@
 </template>
 
 <script setup>
-import { ref, watch, defineProps, defineEmits } from 'vue';
+import { ref, watch, defineProps, defineEmits, onMounted } from 'vue';
 // import { invoke } from '@tauri-apps/api/core'; // No longer directly used here
+// import { useBaiduNetdisk } from '../composables/useBaiduNetdisk'; // Now use it internally
 import { useBaiduNetdisk } from '../composables/useBaiduNetdisk';
 import { formatSize, vipTypeToString } from '../utils/formatters'; // Import formatters
 
+// const props = defineProps({ // No longer need initialAccessToken
+//   show: Boolean,
+//   initialAccessToken: String 
+// });
 const props = defineProps({
-  show: Boolean,
-  initialAccessToken: String
+  show: Boolean
 });
 
-const emit = defineEmits(['close', 'save-token']);
+// const emit = defineEmits(['close', 'save-token']); // No longer emit save-token
+const emit = defineEmits(['close']);
 
 const accessTokenInput = ref('');
 const userInfo = ref(null);
 const quotaInfo = ref(null);
-// const isLoading = ref(false); // Will use from composable
-// const error = ref(null);     // Will use from composable
+// isLoading and error state will now come from the composable instance
 
-// Initialize the composable. 
-// Pass accessTokenInput as the reactive source for the token.
-// The composable itself won't trigger API calls on token change, 
-// but will use its current value when its methods are called.
+// Use the BaiduNetdisk composable internally
 const { 
+    accessToken, // Get the reactive token state
+    setAccessToken, // Get the method to update the token
     getUserInfo, 
     getQuota, 
-    isLoading: baiduApiIsLoading, // Renamed to avoid conflict if component had its own isLoading
-    error: baiduApiError         // Renamed for clarity
-} = useBaiduNetdisk(accessTokenInput);
+    isLoading: baiduApiIsLoading, 
+    error: baiduApiError
+} = useBaiduNetdisk();
 
-watch(() => props.initialAccessToken, (newValue) => {
-  accessTokenInput.value = newValue || '';
-  // Optionally reset info when token changes or modal is reshown with a different initial token
-  if (props.show) {
-      userInfo.value = null;
-      quotaInfo.value = null;
-      if (baiduApiError.value) baiduApiError.value = null; // Clear error from composable
-  }
-}, { immediate: true });
+// Initialize input field when the component mounts or when the token changes
+// Watch the token from the composable
+watch(accessToken, (newValue) => {
+    accessTokenInput.value = newValue || '';
+}, { immediate: true }); 
 
+// Optionally reset local UI state when modal becomes visible
 watch(() => props.show, (newVal) => {
     if (newVal) {
-        // When modal is shown, re-initialize input with the current initialAccessToken prop
-        accessTokenInput.value = props.initialAccessToken || '';
-        // Reset previous fetch state if needed
+        // Reset potential stale info from previous opening
         userInfo.value = null;
         quotaInfo.value = null;
-        if (baiduApiError.value) baiduApiError.value = null; // Clear error from composable
-        // isLoading.value = false; // Loading state is now managed by the composable
+        // Clear error from composable if it was set previously
+        if (baiduApiError.value) baiduApiError.value = null; 
+    } else {
+         // Maybe reset input field to current token value when closing?
+         // Or just let it reflect the last input until next open.
+         // Let's reset it to the actual stored value on close for consistency.
+         accessTokenInput.value = accessToken.value || '';
     }
 });
 
@@ -94,8 +97,6 @@ async function checkTokenAndFetchInfo() {
     return;
   }
 
-  // isLoading.value = true; // No longer needed, composable handles its own loading state
-  // error.value = null;     // No longer needed, composable handles its own error state
   userInfo.value = null; // Still need to clear local display data
   quotaInfo.value = null; // Still need to clear local display data
   if (baiduApiError.value) baiduApiError.value = null; // Clear previous error from composable before new calls
@@ -140,16 +141,16 @@ async function checkTokenAndFetchInfo() {
                                                   // The composable functions will catch their own invoke errors and set baiduApiError.
     // So, if an error occurs here, it's likely an unexpected issue outside the API calls.
     if (baiduApiError) baiduApiError.value = `获取信息时发生意外错误: ${e}`;
-  } finally {
-    // isLoading.value = false; // No longer needed, composable handles its own loading state
   }
 }
 
-function saveToken() {
+function handleSave() { // Renamed from saveToken
   const currentToken = accessTokenInput.value.trim();
-  emit('save-token', currentToken);
-  // alert('Access Token 已在父组件处理保存!'); // Feedback can be handled by parent
-  // closeModal(); // Parent can decide to close or keep open
+  // Call the composable's method to save the token
+  setAccessToken(currentToken);
+  // Feedback alert is now inside setAccessToken in the composable
+  // emit('save-token', currentToken); // No longer needed
+  closeModal(); // Close modal after saving
 }
 
 // Helper functions (can be moved to utils if used elsewhere)
