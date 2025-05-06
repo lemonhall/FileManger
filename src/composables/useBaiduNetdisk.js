@@ -37,8 +37,8 @@ function setAccessToken(newToken) {
 
 // --- API Call Wrappers ---
 
-async function getUserInfo() {
-    const token = accessToken.value;
+async function getUserInfo(tokenOverride) {
+    const token = tokenOverride || accessToken.value;
     if (!token) throw new Error('Access Token is required for getUserInfo');
     isLoading.value = true;
     error.value = null;
@@ -54,8 +54,8 @@ async function getUserInfo() {
     }
 }
 
-async function getQuota() {
-    const token = accessToken.value;
+async function getQuota(tokenOverride) {
+    const token = tokenOverride || accessToken.value;
     if (!token) throw new Error('Access Token is required for getQuota');
     isLoading.value = true;
     error.value = null;
