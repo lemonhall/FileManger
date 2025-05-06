@@ -1,0 +1,53 @@
+<template>
+  <div class="toolbar">
+    <button @click="emit('go-up')" :disabled="!canGoUp">向上</button>
+    <button @click="emit('sync')" :disabled="!canSyncToNetdisk">同步到网盘</button>
+    <span class="current-path">当前路径: {{ currentPath }}</span>
+    <button @click="emit('open-settings')" class="settings-button" title="设置百度网盘Access Token">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="18px" height="18px">
+        <path d="M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.32-.07.65-.07.98s.03.66.07.98l-2.11 1.65c-.19-.15-.24.42.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.61-.25 1.17-.59 1.69-.98l2.49 1c.23.09.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z"/>
+      </svg>
+    </button>
+  </div>
+</template>
+
+<script setup>
+import { defineProps, defineEmits } from 'vue';
+
+defineProps({
+  currentPath: String,
+  canGoUp: Boolean,
+  canSyncToNetdisk: Boolean
+});
+
+const emit = defineEmits(['go-up', 'sync', 'open-settings']);
+</script>
+
+<style scoped>
+.toolbar {
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+.current-path {
+  font-style: italic;
+  color: #555;
+}
+.settings-button {
+  margin-left: auto; /* Pushes to the far right */
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 5px; /* Adjust padding as needed */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.settings-button svg {
+  color: #555;
+}
+.settings-button:hover svg {
+  color: #000;
+}
+</style> 
