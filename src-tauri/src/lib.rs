@@ -7,6 +7,7 @@ use std::fs::File;
 use std::io::{BufReader, BufWriter};
 use tauri::{AppHandle, Manager};
 use log::{info, error, warn};
+use std::time::UNIX_EPOCH;
 
 mod baidu_uploader;
 mod baidu_userinfo;
@@ -117,6 +118,7 @@ struct FileInfo {
     is_dir: bool,
     size: Option<u64>,
     readonly: bool,
+    modified: Option<u64>,
 }
 
 #[tauri::command]
@@ -148,6 +150,11 @@ fn list_directory(path: String) -> Result<Vec<FileInfo>, String> {
                 let is_dir = metadata.is_dir();
                 let size = if is_dir { None } else { Some(metadata.len()) };
                 let readonly = metadata.permissions().readonly();
+                
+                let modified_timestamp = metadata.modified()
+                    .ok()
+                    .and_then(|mod_time| mod_time.duration_since(UNIX_EPOCH).ok())
+                    .map(|duration| duration.as_millis() as u64);
 
                 entries.push(FileInfo {
                     name,
@@ -155,6 +162,7 @@ fn list_directory(path: String) -> Result<Vec<FileInfo>, String> {
                     is_dir,
                     size,
                     readonly,
+                    modified: modified_timestamp,
                 });
             }
             Err(e) => {

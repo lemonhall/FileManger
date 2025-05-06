@@ -13,8 +13,8 @@
           <th>名称</th>
           <th>类型</th>
           <th>大小</th>
-          <th>属性</th> 
-          <th>上次上传</th> <!-- New Column -->
+          <th>待同步?</th>
+          <th>上次上传</th>
         </tr>
       </thead>
       <tbody>
@@ -107,7 +107,7 @@ function handleItemSelectionUpdate(itemId, newSelectedValue) {
 .file-list th:nth-child(2), .file-list td:nth-child(2) { width: auto; white-space: normal; } /* Name */
 .file-list th:nth-child(3), .file-list td:nth-child(3) { width: 120px; } /* Type */
 .file-list th:nth-child(4), .file-list td:nth-child(4) { width: 100px; } /* Size */
-.file-list th:nth-child(5), .file-list td:nth-child(5) { width: 50px; text-align: center; } /* Attributes */
-.file-list th:nth-child(6), .file-list td:nth-child(6) { width: 150px; } /* Last Uploaded - new */
+.file-list th:nth-child(5), .file-list td:nth-child(5) { width: 80px; text-align: center; } /* Needs Sync? - Adjusted width */
+.file-list th:nth-child(6), .file-list td:nth-child(6) { width: 150px; } /* Last Uploaded */
 
 </style> 

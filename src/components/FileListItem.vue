@@ -7,7 +7,7 @@
     </td>
     <td>{{ currentFileTypeDescription }}</td>
     <td>{{ formattedSize }}</td>
-    <td>{{ item.readonly ? 'R' : '' }}</td>
+    <td>{{ needsSyncDisplay }}</td>
     <td>{{ formattedLastUploaded }}</td>
   </tr>
 </template>
@@ -60,6 +60,31 @@ const formattedLastUploaded = computed(() => {
     console.error("Error formatting timestamp:", ts, e);
     return '日期无效';
   }
+});
+
+const needsSyncDisplay = computed(() => {
+  if (props.item.is_dir) {
+    return '-'; // Folders are not directly synced or compared this way
+  }
+
+  const localModified = props.item.modified; // Timestamp in milliseconds from Rust
+  const lastUploaded = lastUploadedTimestamp.value; // Timestamp in milliseconds from our JSON
+
+  if (typeof localModified !== 'number') {
+    // This might happen if a file couldn't get its modified date from OS, or for very new items not yet processed.
+    // Or if item is a directory and somehow bypasses the first check.
+    return '?'; // Or some other indicator for unknown local modified date
+  }
+
+  if (!lastUploaded) {
+    return '是'; // Never uploaded, so needs sync
+  }
+
+  if (localModified > lastUploaded) {
+    return '是'; // Local file is newer than last upload
+  }
+  
+  return '否'; // Up to date
 });
 
 const onDblClick = () => {
