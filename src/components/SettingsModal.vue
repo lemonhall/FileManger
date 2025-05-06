@@ -34,6 +34,7 @@
 import { ref, watch, defineProps, defineEmits } from 'vue';
 // import { invoke } from '@tauri-apps/api/core'; // No longer directly used here
 import { useBaiduNetdisk } from '../composables/useBaiduNetdisk';
+import { formatSize, vipTypeToString } from '../utils/formatters'; // Import formatters
 
 const props = defineProps({
   show: Boolean,
@@ -152,24 +153,24 @@ function saveToken() {
 }
 
 // Helper functions (can be moved to utils if used elsewhere)
-function vipTypeToString(vipType) {
-  switch (vipType) {
-    case 0: return '普通用户';
-    case 1: return '普通会员';
-    case 2: return '超级会员';
-    default: return `未知 (${vipType})`;
-  }
-}
+// function vipTypeToString(vipType) { // Moved to formatters.js
+//   switch (vipType) {
+//     case 0: return '普通用户';
+//     case 1: return '普通会员';
+//     case 2: return '超级会员';
+//     default: return `未知 (${vipType})`;
+//   }
+// }
 
-function formatSize(size) {
-    if (size === null || size === undefined) return '-';
-    const numSize = Number(size);
-    if (isNaN(numSize)) return '-';
-    if (numSize < 1024) return `${numSize} B`;
-    if (numSize < 1024 * 1024) return `${(numSize / 1024).toFixed(1)} KB`;
-    if (numSize < 1024 * 1024 * 1024) return `${(numSize / (1024 * 1024)).toFixed(1)} MB`;
-    return `${(numSize / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-}
+// function formatSize(size) { // Moved to formatters.js
+//     if (size === null || size === undefined) return '-';
+//     const numSize = Number(size);
+//     if (isNaN(numSize)) return '-';
+//     if (numSize < 1024) return `${numSize} B`;
+//     if (numSize < 1024 * 1024) return `${(numSize / 1024).toFixed(1)} KB`;
+//     if (numSize < 1024 * 1024 * 1024) return `${(numSize / (1024 * 1024)).toFixed(1)} MB`;
+//     return `${(numSize / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+// }
 
 </script>
 

@@ -23,6 +23,24 @@
 *   **构建工具**: [Vite](https://vitejs.dev/) - 前端开发服务器和构建工具。
 *   **包管理器**: npm
 
+## 前端代码结构
+
+为了更好地组织和维护前端代码，项目采用了以下结构和模块化方式：
+
+*   **核心组件**:
+    *   `src/components/FileManager.vue`: 作为应用的顶层协调组件，负责整体布局、工具栏渲染、初始化组合式函数、处理来自子组件的事件（如文件选择、双击、保存Token），以及调用组合式函数执行操作（如同步到网盘）。
+    *   `src/components/SettingsModal.vue`: 一个独立的Vue组件，专门用于处理百度网盘的 Access Token 配置。用户可以在此弹窗中输入、保存 Access Token，并查看相关的用户和配额信息（通过 `useBaiduNetdisk`）。它通过 props 和 events 与 `FileManager.vue` 父组件通信。
+    *   `src/components/FileListItem.vue`: 负责渲染文件列表中的**单行**。它接收单个文件/文件夹 `item` 作为 prop，展示其图标、名称、类型、大小等信息，并处理该行的双击和复选框状态变化事件，通过 emit 通知父组件。
+
+*   **组合式函数 (Composables)**:
+    *   `src/composables/useFileSystem.js`: 封装了核心的文件系统浏览逻辑。它管理着当前路径 (`currentPath`)、文件/文件夹列表 (`items`)、加载状态 (`loading`) 和错误状态 (`error`)。提供了获取初始路径、列出目录内容、向上导航和打开目录的方法，供 `FileManager.vue` 调用。
+    *   `src/composables/useBaiduNetdisk.js`: 封装了所有与百度网盘 API 交互的逻辑。它包括获取用户信息、查询存储配额、以及执行文件上传等功能。此函数接收 Access Token 作为响应式引用，并被 `FileManager.vue` 和 `SettingsModal.vue` 用来执行与网盘相关的操作。
+
+*   **工具模块 (Utils)**:
+    *   `src/utils/icons.js`: 此模块集中管理和导出应用中用到的所有SVG图标字符串，供 `FileListItem.vue` 使用。
+    *   `src/utils/fileTypes.js`: 定义了文件扩展名到用户友好的文件类型描述的映射表，供 `FileListItem.vue` 使用。
+    *   `src/utils/formatters.js`: 包含通用的格式化函数，例如将文件大小（字节）格式化为 KB/MB/GB (`formatSize`)，或将 VIP 类型数字转换为可读字符串 (`vipTypeToString`)，供 `FileListItem.vue` 和 `SettingsModal.vue` 使用。
+
 ## 当前功能
 
 *   **目录列表**: 显示指定路径下的文件和文件夹。
