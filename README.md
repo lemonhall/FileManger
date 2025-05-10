@@ -64,7 +64,7 @@
     *   通过界面右上角的齿轮设置图标，可以配置百度网盘的 Access Token (存储在浏览器的 localStorage 中)。
     *   在文件列表中勾选一个或多个文件后，点击工具栏上的 "同步到网盘" 按钮。
     *   选中的文件将被上传到百度网盘的固定目录 (目前为 `/来自FileManger同步`)。
-    *   Rust 后端处理实际的文件上传逻辑，包括对大于 4MB 的文件进行分片上传和 MD5 校验。
+    *   **Rust 后端 (`src-tauri/src/baidu_uploader.rs`) 负责处理实际的文件上传逻辑**，包括预创建文件、根据文件大小选择不同的上传策略（小文件直接上传，大文件自动进行分片上传）、计算文件和分片的 MD5 校验和，并调用百度网盘的相应 API 接口完成上传。
     *   **上传时间戳记录**:
         *   应用会自动记录每个文件成功同步到百度网盘的时间。
         *   此信息显示在文件列表的 "上次上传" 列中，格式为 `YYYY-MM-DD HH:mm`。
@@ -108,10 +108,22 @@
 *   **文件列表排序**: 使用 JavaScript 的 `Array.prototype.sort` 配合 `String.prototype.localeCompare('zh-CN', { sensitivity: 'base', numeric: true })` 可以实现健壮的、支持中文拼音和数字的自然排序。
 *   **隐藏文件/文件夹**: 在无法直接从所有平台 reliably 获取 "hidden" 属性时，通过检查名称是否以 `.` 开头是一种常见的跨平台近似处理方式，适用于 Linux, macOS 和 Git 仓库。
 *   **百度网盘集成 (Rust + Vue)**:
-    *   **后端 (Rust)**: 使用 `reqwest` crate 进行 HTTP API 调用，`md5` crate 进行校验和计算。实现了文件分片上传逻辑，区分处理大小文件，遵循百度网盘的上传流程（预创建、分片上传、创建文件）。Tauri command (`upload_file_to_baidupan`) 接收前端传递的 Access Token 和文件信息。
+    *   **后端 (Rust)**: 使用 `reqwest` crate 进行 HTTP API 调用，`md5` crate 进行校验和计算。核心逻辑位于 `src-tauri/src/baidu_uploader.rs`，其中 `BaiduUploader` 结构体封装了与百度网盘 API 的所有交互。它实现了文件分片上传逻辑（当文件大于4MB时自动启用），区分处理大小文件，遵循百度网盘的上传流程（预创建`precreate`、分片上传`pcssuperfile2`、创建文件`create`）。Tauri command (`upload_file_to_baidupan`) 接收前端传递的 Access Token 和待上传的文件路径列表，并调用 `BaiduUploader` 中的方法执行上传。
     *   **前端 (Vue)**: 设计了设置模态框，允许用户输入并保存 Access Token 到浏览器的 `localStorage`。文件列表支持多选，通过 "同步到网盘" 按钮触发上传流程，调用 Rust 后端命令。
     *   **Access Token 管理**: 为了方便测试和基本可用性，Access Token 通过前端界面配置并存储在 `localStorage`。在生产环境中，可能需要考虑更安全的 Token 存储和管理机制。
     *   **上传状态持久化**: 为了记录文件的上次上传时间，项目通过 Rust 后端在应用数据目录中维护一个 `upload_timestamps.json` 文件。前端通过 Tauri 命令调用相应接口进行读写，并通过 Vue Composable (`useUploadTimestamps.js`) 进行状态管理和UI更新。这为后续实现更智能的同步策略（如基于修改时间判断是否需要同步）奠定了基础。
+    *   上传进度显示。
+
+## 核心后端逻辑
+
+百度网盘的上传功能主要由 `src-tauri/src/baidu_uploader.rs` 文件中的 Rust 代码实现。该模块负责：
+
+*   初始化 `BaiduUploader`，包含 API 客户端和 Access Token。
+*   提供 `upload_file` 公共方法，根据文件大小自动选择 `upload_small_file` 或 `upload_large_file`。
+    *   `upload_small_file`: 处理小于等于4MB的文件，通过 `precreate` -> `pcssuperfile2` (单次上传) -> `create` 流程。
+    *   `upload_large_file`: 处理大于4MB的文件，先计算所有分片的MD5列表，然后通过 `precreate` -> 循环调用 `pcssuperfile2` (分片上传) -> `create` (合并分片) 流程。
+*   所有API调用均使用 `reqwest` 库，文件和分片的MD5校验使用 `md5` 库。
+*   错误处理通过 `anyhow` 库进行。
 
 ## 未来可能的改进
 
